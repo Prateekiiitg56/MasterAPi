@@ -29,14 +29,14 @@ MasterAPI fixes that with one small, self-hosted tool:
 
 | | |
 |---|---|
-| 🔐 **Keys in one encrypted vault** | Encrypted on disk; the unlock key lives in Windows Credential Manager, macOS Keychain or Secret Service. |
-| 🏷️ **Call by name** | `chat("gemini", ...)`, `embed("openai", ...)`, `image("openai", ...)`. Pick a model per call with `"router:meta-llama/llama-3.3-70b-instruct:free"`. |
-| 🔁 **Bulk keys that rotate** | Put ten free-tier keys under one name. Calls take turns; a rate-limited key rests for its `Retry-After`, a rejected key sits out 10 minutes. |
-| 🌐 **One format for every provider** | OpenAI's request format works everywhere. Claude's native API is translated, including tools, images and streaming. |
-| 🧩 **Any API with a key** | ElevenLabs, Replicate, Deepgram or your own service, through a passthrough that adds the key. |
-| 🤖 **Built for coding agents** | An MCP server for Claude Code, Cursor, Codex and more, with **Code Mode**: agents write TypeScript that runs in a locked-down Deno sandbox. |
-| 🎟️ **Per-project tokens** | Each project gets its own revocable token, optionally limited to some names. |
-| 📊 **Dashboard** | Add keys, watch key health and usage, manage tokens. Light and dark, works on a phone. |
+| **Keys in one encrypted vault** | Encrypted on disk; the unlock key lives in Windows Credential Manager, macOS Keychain or Secret Service. |
+| **Call by name** | `chat("gemini", ...)`, `embed("openai", ...)`, `image("openai", ...)`. Pick a model per call with `"router:meta-llama/llama-3.3-70b-instruct:free"`. |
+| **Bulk keys that rotate** | Put ten free-tier keys under one name. Calls take turns; a rate-limited key rests for its `Retry-After`, a rejected key sits out 10 minutes. |
+| **One format for every provider** | OpenAI's request format works everywhere. Claude's native API is translated, including tools, images and streaming. |
+| **Any API with a key** | ElevenLabs, Replicate, Deepgram or your own service, through a passthrough that adds the key. |
+| **Built for coding agents** | An MCP server for Claude Code, Cursor, Codex and more, with **Code Mode**: agents write TypeScript that runs in a locked-down Deno sandbox. |
+| **Per-project tokens** | Each project gets its own revocable token, optionally limited to some names. |
+| **Dashboard** | Add keys, watch key health and usage, manage tokens. Light and dark, works on a phone. |
 
 ## Install
 
