@@ -22,7 +22,7 @@ dependencies = [
     "keyring>=24",
     "fastapi>=0.110",
     "uvicorn>=0.29",
-    "mcp>=1.20",
+    "mcp>=1.20,<2",  # 2.x renamed FastMCP; port later
 ]
 
 [project.optional-dependencies]
