@@ -1,44 +1,48 @@
+<div align="center">
+
 # MasterAPI
 
-Self-hosted gateway for your AI API keys. Store keys once under a name like
-`gemini` or `router`, then call any model by that name from any project: chat,
-embeddings, image generation, or any other HTTP API that takes a key.
+**One home for all your AI API keys. Call any model by name, from any project.**
 
-```python
-from masterapi import chat, embed, image
+Store your OpenAI, Gemini, Claude, OpenRouter, Groq and other keys once, give them
+names, and use `chat("gemini", "hi")` everywhere. Bulk keys rotate on their own,
+projects never see a key, and your coding agents get every model through MCP.
 
-chat("gemini", "Explain recursion in one line")
-embed("openai", ["first text", "second text"])
-image("openai", "a lighthouse at dawn, watercolor")
-```
+[![CI](https://github.com/Prateekiiitg56/MasterAPi/actions/workflows/ci.yml/badge.svg)](https://github.com/Prateekiiitg56/MasterAPi/actions/workflows/ci.yml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![MCP](https://img.shields.io/badge/MCP-Code%20Mode-B8913F)](#for-coding-agents-mcp--code-mode)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-```python
-# Any language, any OpenAI SDK
-client = OpenAI(base_url="http://127.0.0.1:8787/v1", api_key="<project token>")
-client.chat.completions.create(model="router", messages=[...])
-```
+[Install](#install) · [Use it](#use-it) · [Coding agents](#for-coding-agents-mcp--code-mode) · [Dashboard](#dashboard) · [Setup guide](docs/SETUP.md) · [Security](SECURITY.md)
+
+<img src="docs/images/overview.png" alt="MasterAPI dashboard overview: aliases, keys ready, requests and model tokens" width="900">
+
+</div>
 
 ## Why
 
-- **Keys in one place.** No more `.env` files with copies of the same keys in every repo.
-- **Bulk keys.** One name can hold many keys. Calls rotate across them; a key that
-  hits a rate limit rests for its `Retry-After`, a rejected key rests 10 minutes,
-  and the call moves on to the next key.
-- **One request format.** OpenAI's format works for every provider. Anthropic's
-  native API is translated, including tools, images and streaming.
-- **Any API.** Non-LLM services (ElevenLabs, Replicate, Deepgram, your own) work
-  through a raw passthrough that injects the key.
-- **Per-project tokens.** Each project gets its own revocable token, optionally
-  limited to some aliases. Projects never see the real keys.
-- **Dashboard.** Add keys, watch key health and usage, manage tokens.
-- **Coding agents.** An MCP server with Code Mode: agents write TypeScript against
-  your aliases and it runs in a locked-down Deno sandbox.
+Every project ends up with its own `.env` full of the same API keys. Free-tier keys
+hit rate limits. Switching from GPT to Gemini means new SDKs and new code. Coding
+agents can't use your other models unless you paste keys into their config.
+
+MasterAPI fixes that with one small, self-hosted tool:
+
+| | |
+|---|---|
+| 🔐 **Keys in one encrypted vault** | Encrypted on disk; the unlock key lives in Windows Credential Manager, macOS Keychain or Secret Service. |
+| 🏷️ **Call by name** | `chat("gemini", ...)`, `embed("openai", ...)`, `image("openai", ...)`. Pick a model per call with `"router:meta-llama/llama-3.3-70b-instruct:free"`. |
+| 🔁 **Bulk keys that rotate** | Put ten free-tier keys under one name. Calls take turns; a rate-limited key rests for its `Retry-After`, a rejected key sits out 10 minutes. |
+| 🌐 **One format for every provider** | OpenAI's request format works everywhere. Claude's native API is translated, including tools, images and streaming. |
+| 🧩 **Any API with a key** | ElevenLabs, Replicate, Deepgram or your own service, through a passthrough that adds the key. |
+| 🤖 **Built for coding agents** | An MCP server for Claude Code, Cursor, Codex and more, with **Code Mode**: agents write TypeScript that runs in a locked-down Deno sandbox. |
+| 🎟️ **Per-project tokens** | Each project gets its own revocable token, optionally limited to some names. |
+| 📊 **Dashboard** | Add keys, watch key health and usage, manage tokens. Light and dark, works on a phone. |
 
 ## Install
 
-One line. It installs [uv](https://docs.astral.sh/uv/) if needed, MasterAPI, and
-[Deno](https://deno.com) (the Code Mode sandbox), then starts a short setup that
-stores your first key and connects your coding agents.
+One line. It installs [uv](https://docs.astral.sh/uv/) if needed, MasterAPI and
+[Deno](https://deno.com) (the Code Mode sandbox), then runs a short setup that stores
+your first key and connects your coding agents.
 
 **Windows (PowerShell)**
 
@@ -52,237 +56,214 @@ irm https://raw.githubusercontent.com/Prateekiiitg56/MasterAPi/main/install.ps1 
 curl -fsSL https://raw.githubusercontent.com/Prateekiiitg56/MasterAPi/main/install.sh | sh
 ```
 
-Already have uv or pip?
+<details>
+<summary>Other ways: uv, pip, from source, Docker</summary>
 
 ```bash
 uv tool install git+https://github.com/Prateekiiitg56/MasterAPi && masterapi setup
 pip install git+https://github.com/Prateekiiitg56/MasterAPi && masterapi setup
 ```
 
-`masterapi setup` can be run again at any time. Requires Python 3.10+ (uv brings
-its own). Update with `uv tool upgrade masterapi`.
+From source: `git clone https://github.com/Prateekiiitg56/MasterAPi && cd MasterAPi && pip install -e .`
 
-## Store keys
+Docker and running it as a background service are covered in the [setup guide](docs/SETUP.md).
+</details>
+
+Setup takes about a minute:
+
+```text
+$ masterapi setup
+Vault:     C:\Users\you\.masterapi\vault.enc (0 aliases)
+Code Mode: ready (Deno found)
+
+Add an API key now? [Y/n]
+Provider [gemini]: gemini
+Name your projects will use [gemini]:
+Default chat model [gemini-2.5-flash]:
+API key (blank to finish): ****
+API key (blank to finish):
+  saved 'gemini' with 1 key(s)
+Send a test message through 'gemini'? [Y/n]
+  reply: Hi there, how are you?
+
+Connect MasterAPI to Claude Code, Codex, Claude Desktop? [Y/n]
+  ok      Claude Code: added to user config (all projects)
+  ok      Codex: updated C:\Users\you\.codex\config.toml
+  ok      Claude Desktop: updated ...\Claude\claude_desktop_config.json
+```
+
+Requires Python 3.10+ (uv brings its own). Full walkthrough: **[docs/SETUP.md](docs/SETUP.md)**.
+
+## Use it
+
+### Store keys
 
 ```bash
-masterapi providers
 masterapi add gemini -p gemini -m gemini-2.5-flash --embed-model gemini-embedding-001
-masterapi add openai -p openai -m gpt-4o-mini --embed-model text-embedding-3-small --image-model gpt-image-1
-masterapi add router -p openrouter -m openai/gpt-4o-mini -f openrouter_keys.txt
+masterapi add openai -p openai -m gpt-4o-mini --image-model gpt-image-1
+masterapi add router -p openrouter -m openai/gpt-4o-mini -f openrouter_keys.txt   # bulk: one key per line
 masterapi add claude -p anthropic -m claude-sonnet-4-5
-masterapi add local  -p ollama -m llama3.2
 masterapi list
-masterapi test gemini "hello"
-masterapi test openai --op images "a red fox"
 ```
 
-`add` asks for keys with hidden input. `-f` reads a file with one key per line
-for bulk import. Keys are never accepted as arguments, so they stay out of shell
-history. Delete the keys file after importing it.
+Keys are typed into a hidden prompt or read from a file. They are never passed as
+arguments, so they stay out of your shell history.
 
-More: `add-keys NAME -f FILE`, `remove-key NAME LAST4`, `set NAME -m MODEL`, `remove NAME`.
-
-### Built-in providers
-
-| Provider | Supports | Key sent as |
-|---|---|---|
-| openai, gemini, together | chat, embeddings, images | Bearer |
-| xai | chat, images | Bearer |
-| mistral, fireworks, cohere | chat, embeddings | Bearer |
-| openrouter, groq, deepseek, perplexity | chat | Bearer |
-| anthropic | chat (native API, translated) | `x-api-key` |
-| ollama | chat, embeddings | no key |
-| elevenlabs, replicate, stability, deepgram | raw requests | provider's own header |
-
-### Any other API
-
-```bash
-# OpenAI-compatible endpoint
-masterapi add vllm -p custom --base-url http://gpu-box:8000/v1 -m qwen2.5 --cap chat,embeddings
-# Key in a custom header, raw requests only
-masterapi add weather -p custom --base-url https://api.weather.example --adapter http --auth header:X-Api-Key
-# Key in the query string
-masterapi add maps -p custom --base-url https://maps.example/api --adapter http --auth query:key
-```
-
-`--auth` accepts `bearer`, `none`, `header:NAME`, `header:NAME=TEMPLATE`
-(e.g. `header:Authorization=Token {key}`) and `query:NAME`. Built-in providers
-take the same flags to override their defaults.
-
-## Call by name
-
-A target is `name` (uses the alias's default model for that operation) or
-`name:model`, e.g. `router:meta-llama/llama-3.3-70b-instruct:free`.
-
-### Python
+### From Python
 
 ```python
-from masterapi import MasterAPI
+from masterapi import chat, embed, image
 
-api = MasterAPI()
-api.chat_completion("claude", {"messages": [...], "tools": [...]})   # full OpenAI-format response
-for chunk in api.chat_stream("gemini", {"messages": [...]}):          # SSE bytes
-    ...
-api.embeddings("openai", {"input": ["a", "b"], "dimensions": 256})
-api.images("openai", {"prompt": "a fox", "size": "1024x1024"})
-api.request("elevenlabs", "POST", "/v1/text-to-speech/VOICE_ID", json={"text": "hi"})  # raw httpx.Response
+chat("gemini", "Explain recursion in one line")
+chat("claude", "Review this diff", system="You are a strict reviewer")
+embed("openai", ["first text", "second text"])        # -> list of vectors
+image("openai", "a lighthouse at dawn, watercolor")   # -> [{"url": ...}]
 ```
 
-### Server (any language)
+### From any language
+
+Run `masterapi serve`, create a token per project, and point any OpenAI SDK at it.
+The alias name goes where the model name normally goes.
 
 ```bash
-masterapi serve                       # http://127.0.0.1:8787, prints an admin token on first start
+masterapi serve                    # http://127.0.0.1:8787  (dashboard at /dashboard/)
 masterapi token create my-app --alias gemini --alias router
 ```
 
-| Endpoint | Purpose |
-|---|---|
-| `POST /v1/chat/completions` | chat, `stream: true` supported |
-| `POST /v1/embeddings` | embeddings |
-| `POST /v1/images/generations` | image generation |
-| `GET /v1/models` | aliases this token may use |
-| `ANY /proxy/{alias}/{path}` | raw passthrough; key injected, client auth headers stripped |
-| `/dashboard/` | web dashboard (admin token) |
-| `/admin/*` | admin API used by the dashboard |
-| `/mcp` | MCP server for coding agents (token scope applies) |
-| `/docs` | OpenAPI docs |
+```js
+import OpenAI from "openai";
 
-Errors use OpenAI's shape `{"error": {"message", "type", "code"}}`. When every key
-is rate limited the response is `429` with `Retry-After`.
+const client = new OpenAI({ baseURL: "http://127.0.0.1:8787/v1", apiKey: process.env.MASTERAPI_TOKEN });
+const reply = await client.chat.completions.create({
+  model: "router",                       // your alias
+  messages: [{ role: "user", content: "Hello!" }],
+});
+```
 
-See [examples/](examples/) for Python, OpenAI SDK, Node and curl.
+It works the same from Python, Go, Rust, PHP, curl, or anything that speaks the OpenAI
+API: `/v1/chat/completions` (with streaming), `/v1/embeddings`, `/v1/images/generations`,
+and `/proxy/{alias}/...` for any other endpoint. More in [examples/](examples/).
 
-### Coding agents (MCP + Code Mode)
-
-`masterapi mcp` is an MCP server, so Claude Code, Cursor, Codex, Cline and other
-agents can use your aliases. They see alias names only, never keys, and they get no
-admin actions.
+## For coding agents (MCP + Code Mode)
 
 ```bash
-masterapi connect                  # every agent found: Claude Code, Cursor, Codex, Claude Desktop, Windsurf
-masterapi connect claude cursor    # or just these
-masterapi connect --alias gemini   # limit what agents may use
-masterapi connect --list           # which agents are installed
+masterapi connect      # Claude Code, Cursor, Codex, Claude Desktop, Windsurf: whichever you have
 ```
 
-Restart the agent afterwards. Prefer doing it by hand? Claude Code:
-`claude mcp add --scope user masterapi -- masterapi mcp`. Cursor (`~/.cursor/mcp.json`)
-and Codex (`~/.codex/config.toml`):
+Your agent can now ask Gemini for a second opinion, hand bulk work to a cheap Groq
+model, create embeddings or generate images, without ever seeing a key.
 
-```json
-{ "mcpServers": { "masterapi": { "command": "masterapi", "args": ["mcp"] } } }
-```
-
-```toml
-[mcp_servers.masterapi]
-command = "masterapi"
-args = ["mcp"]
-```
-
-#### Code Mode
-
-With [Deno](https://deno.com) installed, the server offers one `run_code` tool
-instead of a tool per action (the idea behind Cloudflare's Code Mode, without
-Cloudflare). The agent gets a typed TypeScript API in the tool description and
-writes a short program:
+With Deno installed, the agent gets a single `run_code` tool and a typed API.
+Instead of one tool call per request, it writes a short program, the same idea as
+[Cloudflare's Code Mode](https://blog.cloudflare.com/code-mode/), running on your
+own machine:
 
 ```ts
+// written by the agent, run in the sandbox
 const files = ["auth.py", "db.py", "api.py"];
-const reviews = await Promise.all(files.map((f) =>
-  masterapi.chat("gemini", `List bugs in ${f}: ...`)));
-return reviews;
+const reviews = await Promise.all(
+  files.map((f) => masterapi.chat("gemini", `List bugs in ${f}:\n...`)),
+);
+return Object.fromEntries(files.map((f, i) => [f, reviews[i]]));
 ```
 
-One tool call can loop, fan out in parallel and combine results, instead of
-dozens of round trips through the agent's context.
+The program runs in a Deno process with **no permissions**: no network, files, env
+or subprocesses. `eval` and `import` are blocked. Its only way out is the `masterapi`
+object, served by the host over stdio, so keys never enter the sandbox. More in
+[SECURITY.md](SECURITY.md#code-mode-sandbox).
 
-The program runs in a Deno process with **no permissions**: no network, files,
-env or subprocesses. Code generation from strings and `import` are blocked, and
-`Deno`, `fetch` and `Worker` are removed. Its only way out is the `masterapi`
-binding, which the Python host serves over stdio, so keys never enter the sandbox.
-Limits: 60 s, 100 calls, 4 in flight per run, output capped at 40,000 characters.
-Generated images and binary responses are saved to `./masterapi-outputs/` and
-returned as file paths.
-
-`--mode tools` gives classic tools instead (`chat`, `embed`, `generate_image`,
-`request`). Without Deno, `auto` (the default) falls back to that mode.
-
-#### Over HTTP
-
-`masterapi serve` also serves MCP at `/mcp`. The project token's alias limits apply.
-
-```bash
-claude mcp add --transport http masterapi http://127.0.0.1:8787/mcp --header "Authorization: Bearer <token>"
+```mermaid
+flowchart LR
+    A["Coding agent<br/>(Claude Code, Cursor, Codex)"] -- "run_code(TypeScript)" --> M["masterapi mcp"]
+    M -- "spawns with no permissions" --> S["Deno sandbox<br/>agent's program"]
+    S -- "masterapi.chat() over stdio" --> M
+    M -- "picks a key, retries" --> P["Gemini / OpenAI / Claude / ..."]
+    V[("Encrypted vault")] -.-> M
 ```
 
-### Docker
+## Dashboard
 
-```bash
-docker build -t masterapi .
-docker run -d -p 127.0.0.1:8787:8787 -v masterapi-data:/data -e MASTERAPI_KEY=$(masterapi keygen) masterapi
-docker logs <container>      # admin token, shown once
-```
+Run `masterapi serve` and open `http://127.0.0.1:8787/dashboard/`. Sign in with the
+admin token it prints on first start.
 
-Save that `MASTERAPI_KEY`: it decrypts the vault.
-
-## Configuration
-
-| Variable | Default | Meaning |
-|---|---|---|
-| `MASTERAPI_HOME` | `~/.masterapi` | vault folder |
-| `MASTERAPI_KEY` | OS keyring | vault encryption key (Docker, CI, servers without a keyring) |
-| `MASTERAPI_TIMEOUT` | `120` | upstream timeout in seconds |
-| `MASTERAPI_RETRIES` | `1` | extra passes over the keys after 5xx or network errors |
-
-## Architecture
-
-```
-project ─► masterapi.chat/embed/image/request ─┐
-any SDK ─► FastAPI server /v1, /proxy ─────────┤
-                                               ▼
-                         MasterAPI client: resolve "alias[:model]"
-                                               │
-                 provider registry (+ alias overrides): URL, auth style, capabilities
-                                               │
-                 adapter: OpenAI-compatible │ Anthropic native │ raw HTTP
-                                               │
-                 key pool: round robin, cooldowns, health ─► httpx ─► provider
-```
-
-| File | Role |
+| Keys, with live status per key | Key health |
 |---|---|
-| `masterapi/vault.py` | encrypted storage of aliases and hashed tokens |
-| `masterapi/providers/` | provider registry, auth styles |
-| `masterapi/adapters/` | request/response translation (no I/O) |
-| `masterapi/keypool.py` | key order, cooldowns, health |
-| `masterapi/client.py` | Python API, retries |
-| `masterapi/server.py` | HTTP gateway, admin API, dashboard, `/mcp` |
-| `masterapi/mcp_server.py` | MCP tools for coding agents |
-| `masterapi/codemode/` | Code Mode: Deno sandbox runner and host bindings |
+| <img src="docs/images/keys-dark.png" alt="Alias detail with four rotating keys, one resting after a rate limit"> | <img src="docs/images/health.png" alt="Key health table"> |
+| **Usage per project token** | **Add an alias** |
+| <img src="docs/images/usage-dark.png" alt="Usage table per token and alias"> | <img src="docs/images/new-alias.png" alt="New alias dialog"> |
 
-## Security
+## How it works
 
-Read [SECURITY.md](SECURITY.md). In short: the vault is encrypted with a key held
-in your OS keyring, tokens are stored hashed, the server listens on localhost by
-default, and the admin API never returns plaintext keys. Put a TLS reverse proxy
-in front before exposing it to a network.
+```mermaid
+flowchart TB
+    subgraph Callers
+        PY["Python: chat('gemini', ...)"]
+        SDK["Any OpenAI SDK"]
+        AG["Coding agent (MCP)"]
+    end
+    PY --> CORE
+    SDK --> GW["Gateway: /v1, /proxy, /mcp<br/>token check and scope"] --> CORE
+    AG --> GW
+    CORE["Resolve 'alias:model'"] --> REG["Provider registry<br/>URL, how the key is sent, capabilities"]
+    REG --> AD["Adapter<br/>OpenAI-compatible, Anthropic native, raw HTTP"]
+    AD --> POOL["Key pool<br/>round robin, cooldowns, health"]
+    POOL --> UP["Provider API"]
+    VAULT[("Vault<br/>Fernet + OS keyring")] -.-> CORE
+```
 
-## Limits
+| Provider | Supports |
+|---|---|
+| OpenAI, Gemini, Together | chat, embeddings, images |
+| xAI | chat, images |
+| Mistral, Fireworks, Cohere | chat, embeddings |
+| OpenRouter, Groq, DeepSeek, Perplexity | chat |
+| Anthropic (native API, translated) | chat, with tools, images and streaming |
+| Ollama (local, no key) | chat, embeddings |
+| ElevenLabs, Replicate, Stability, Deepgram | raw passthrough |
+| Anything else | `-p custom --base-url URL`, key sent as Bearer, `header:NAME`, `query:NAME` or not at all |
 
-- Anthropic has no embeddings or image API. OpenAI options it lacks (`n`,
-  `response_format`) are dropped when translating.
-- Image edits, audio and other endpoints go through `/proxy` or `request()`.
-- Key health and usage counters live in memory and reset on restart.
-- Two processes writing the vault at the same moment can lose one change.
-- Code Mode needs Deno. The sandbox runs one program at a time per tool call and
-  starts a fresh Deno process each run (about 0.1 s).
+## FAQ
 
-## Development
+**How is this different from OpenRouter?** OpenRouter is a hosted service you pay
+through. MasterAPI runs on your machine with your own keys, and an OpenRouter key
+can be one of them.
+
+**And LiteLLM or Cloudflare AI Gateway?** Both are broader gateways. LiteLLM's proxy
+is aimed at teams and runs with a database; Cloudflare's runs in their cloud.
+MasterAPI is a small local tool: keys in your OS keychain, rotation across many keys,
+a dashboard, and an MCP server with a local Code Mode sandbox for coding agents.
+
+**Do my projects or agents ever see the keys?** No. They get an alias name and, over
+HTTP, a project token. The admin API only ever shows the last four characters.
+
+**What if I lose the vault key?** It lives in your OS keychain. On servers you set
+`MASTERAPI_KEY` yourself, so back that up. Without it the vault can't be decrypted.
+
+**Is the sandbox safe for untrusted code?** It's built for code your own agent
+writes: no permissions, no `eval`, no imports, limits on time and calls. Details and
+the threat model are in [SECURITY.md](SECURITY.md#code-mode-sandbox).
+
+## Roadmap
+
+- [ ] Persistent usage history (today the counters reset when the server restarts)
+- [ ] Per-token budgets and rate limits
+- [ ] Response caching
+- [ ] Native Gemini adapter (beyond the OpenAI-compatible endpoint)
+- [ ] PyPI release and MCP SDK 2.x
+
+Ideas and pull requests are welcome.
+
+## Contributing
 
 ```bash
+git clone https://github.com/Prateekiiitg56/MasterAPi && cd MasterAPi
 pip install -e ".[dev]"
 python -m pytest
 ruff check .
 ```
 
-MIT licensed.
+Adding a provider is usually one line; see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+[MIT](LICENSE)
