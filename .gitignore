@@ -1,0 +1,17 @@
+__pycache__/
+*.egg-info/
+build/
+dist/
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Never commit secrets
+*.enc
+*.tmp
+*keys*.txt
+masterapi-outputs/
+.env
+
+# Machine-specific dev launch config
+.claude/launch.json

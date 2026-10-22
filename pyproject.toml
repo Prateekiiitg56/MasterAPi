@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "masterapi"
+version = "0.2.0"
+description = "Self-hosted gateway for your LLM API keys: store keys under names, call any model by name."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+keywords = ["llm", "api-keys", "gateway", "openai", "gemini", "openrouter", "anthropic", "proxy"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Internet :: Proxy Servers",
+    "Topic :: Security :: Cryptography",
+]
+dependencies = [
+    "httpx>=0.27",
+    "cryptography>=42",
+    "keyring>=24",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "mcp>=1.20",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.scripts]
+masterapi = "masterapi.cli:main"
+
+[tool.setuptools]
+packages = ["masterapi", "masterapi.adapters", "masterapi.providers", "masterapi.dashboard", "masterapi.codemode"]
+
+[tool.setuptools.package-data]
+"masterapi.dashboard" = ["*.html", "*.js", "*.css"]
+"masterapi.codemode" = ["*.ts"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["B008"]  # FastAPI Depends()/Body() defaults
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
