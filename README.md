@@ -186,11 +186,16 @@ flowchart LR
 Run `masterapi serve` and open `http://127.0.0.1:8787/dashboard/`. Sign in with the
 admin token it prints on first start.
 
-| Keys, with live status per key | Key health |
-|---|---|
-| <img src="docs/images/keys-dark.png" alt="Alias detail with four rotating keys, one resting after a rate limit"> | <img src="docs/images/health.png" alt="Key health table"> |
-| **Usage per project token** | **Add an alias** |
-| <img src="docs/images/usage-dark.png" alt="Usage table per token and alias"> | <img src="docs/images/new-alias.png" alt="New alias dialog"> |
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/keys-dark.png" alt="Alias detail with four rotating keys, one resting after a rate limit"><p align="center"><b>Keys</b>, with live status per key</p></td>
+    <td width="50%"><img src="docs/images/health.png" alt="Key health table"><p align="center"><b>Health</b> of every key since the server started</p></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/usage-dark.png" alt="Usage table per project token and alias"><p align="center"><b>Usage</b> per project token and alias</p></td>
+    <td width="50%"><img src="docs/images/new-alias.png" alt="New alias dialog"><p align="center"><b>Add an alias</b> and paste keys in bulk</p></td>
+  </tr>
+</table>
 
 ## How it works
 
