@@ -2,11 +2,13 @@
 
 # MasterAPI
 
-**One home for all your AI API keys. Call any model by name, from any project.**
+**Self-hosted API key manager and LLM gateway. Store your AI API keys once, call any model by name, from any project.**
 
-Store your OpenAI, Gemini, Claude, OpenRouter, Groq and other keys once, give them
-names, and use `chat("gemini", "hi")` everywhere. Bulk keys rotate on their own,
-projects never see a key, and your coding agents get every model through MCP.
+Keep your OpenAI, Gemini, Claude (Anthropic), OpenRouter, Groq, Mistral and DeepSeek
+keys in one encrypted vault, give them names, and call `chat("gemini", "hi")` everywhere.
+Bulk keys rotate around rate limits, any language can use the OpenAI-compatible API,
+projects never see a key, and coding agents (Claude Code, Cursor, Codex) get every
+model through an MCP server.
 
 [![CI](https://github.com/Prateekiiitg56/MasterAPi/actions/workflows/ci.yml/badge.svg)](https://github.com/Prateekiiitg56/MasterAPi/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
@@ -185,6 +187,10 @@ flowchart LR
 
 Run `masterapi serve` and open `http://127.0.0.1:8787/dashboard/`. Sign in with the
 admin token it prints on first start.
+
+The overview answers "is everything working?" at a glance: how many keys are ready,
+which ones are resting or rejected, requests per minute over the last hour, success
+rate, median and p95 response time, model tokens and uptime.
 
 <table>
   <tr>

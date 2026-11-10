@@ -35,7 +35,7 @@ masterapi = "masterapi.cli:main"
 packages = ["masterapi", "masterapi.adapters", "masterapi.providers", "masterapi.dashboard", "masterapi.codemode"]
 
 [tool.setuptools.package-data]
-"masterapi.dashboard" = ["*.html", "*.js", "*.css"]
+"masterapi.dashboard" = ["*.html", "*.js", "*.css", "*.svg"]
 "masterapi.codemode" = ["*.ts"]
 
 [tool.ruff]

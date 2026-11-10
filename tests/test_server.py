@@ -101,8 +101,34 @@ def test_admin_tokens_and_usage(setup):
 
     client.post("/v1/chat/completions", headers=project, json={"model": "gem", "messages": []})
     usage = client.get("/admin/usage", headers=admin).json()
+    assert len(usage) == 1 and usage[0].pop("avg_ms") >= 0
     assert usage == [{"token": "proj", "alias": "gem", "op": "chat", "requests": 1, "errors": 0,
                       "prompt_tokens": 3, "completion_tokens": 4}]
+
+    stats = client.get("/admin/stats", headers=admin).json()
+    assert stats["requests"] == 1 and stats["success_rate"] == 1
+    assert stats["latency_ms"]["p95"] is not None
+    assert len(stats["timeline"]) == 60 and stats["timeline"][-1]["requests"] == 1
+    assert client.get("/admin/stats", headers=project).status_code == 403
+
+
+def test_usage_stats_window_and_percentiles():
+    from masterapi.server import Usage
+
+    now = [600_000.0]
+    usage = Usage(clock=lambda: now[0])
+    assert usage.stats()["success_rate"] is None and usage.stats()["latency_ms"]["p50"] is None
+    for ms in range(1, 101):
+        usage.record("t", "a", "chat", ok=True, ms=ms)
+    usage.record("t", "a", "chat", ok=False, ms=5)
+    s = usage.stats()
+    assert s["requests"] == 101 and s["errors"] == 1
+    assert s["latency_ms"] == {"p50": 51, "p95": 96}
+    assert s["timeline"][-1] == {"t": 600_000, "requests": 101, "errors": 1}
+    now[0] += 61 * 60
+    usage.record("t", "a", "chat", ok=True, ms=1)
+    assert sum(b["requests"] for b in usage.stats()["timeline"]) == 1
+    assert usage.stats()["uptime_seconds"] == 3660
 
 
 def test_dashboard_served_with_csp(setup):

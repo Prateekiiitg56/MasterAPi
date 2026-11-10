@@ -10,6 +10,7 @@ import secrets
 import threading
 import time
 import uuid
+from collections import deque
 from contextlib import asynccontextmanager
 from importlib import resources
 
@@ -31,30 +32,73 @@ HOP_HEADERS = {"connection", "keep-alive", "proxy-authenticate", "proxy-authoriz
                "trailers", "transfer-encoding", "upgrade", "host", "content-length"}
 # Client-side credentials never reach the provider; the alias's key is injected instead.
 CLIENT_AUTH_HEADERS = {"authorization", "x-masterapi-token", "x-api-key", "api-key", "cookie"}
-DASHBOARD_FILES = {"index.html": "text/html", "app.js": "text/javascript", "app.css": "text/css"}
+DASHBOARD_FILES = {"index.html": "text/html", "app.js": "text/javascript", "app.css": "text/css",
+                   "favicon.svg": "image/svg+xml"}
 DASHBOARD_CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; "
                  "img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
 
 
 class Usage:
-    """In-memory request and token counters per (client token, alias, operation)."""
+    """In-memory counters since the server started.
 
-    def __init__(self):
+    Per (client token, alias, operation) totals, a per-minute traffic history for the
+    last WINDOW minutes, and recent latencies of successful calls for percentiles.
+    """
+
+    WINDOW = 60
+    LATENCY_SAMPLES = 1000
+
+    def __init__(self, clock=time.time):
+        self._clock = clock
         self._lock = threading.Lock()
         self._rows: dict[tuple[str, str, str], dict] = {}
+        self._minutes: dict[int, list[int]] = {}
+        self._latency: deque[float] = deque(maxlen=self.LATENCY_SAMPLES)
+        self.started = clock()
 
-    def record(self, token: str, alias: str, op: str, ok: bool, usage: dict | None = None) -> None:
+    def record(self, token: str, alias: str, op: str, ok: bool, usage: dict | None = None,
+               ms: float = 0.0) -> None:
+        minute = int(self._clock() // 60)
         with self._lock:
-            row = self._rows.setdefault((token, alias, op), {"requests": 0, "errors": 0,
-                                                            "prompt_tokens": 0, "completion_tokens": 0})
+            row = self._rows.setdefault((token, alias, op), {"requests": 0, "errors": 0, "prompt_tokens": 0,
+                                                            "completion_tokens": 0, "ms": 0.0})
             row["requests"] += 1
             row["errors"] += not ok
+            row["ms"] += ms
             for k in ("prompt_tokens", "completion_tokens"):
                 row[k] += (usage or {}).get(k) or 0
+            bucket = self._minutes.setdefault(minute, [0, 0])
+            bucket[0] += 1
+            bucket[1] += not ok
+            for old in [m for m in self._minutes if m <= minute - self.WINDOW]:
+                del self._minutes[old]
+            if ok:
+                self._latency.append(ms)
 
     def snapshot(self) -> list[dict]:
         with self._lock:
-            return [{"token": t, "alias": a, "op": o, **row} for (t, a, o), row in sorted(self._rows.items())]
+            return [{"token": t, "alias": a, "op": o, **{k: v for k, v in row.items() if k != "ms"},
+                     "avg_ms": round(row["ms"] / row["requests"])}
+                    for (t, a, o), row in sorted(self._rows.items())]
+
+    def stats(self) -> dict:
+        now = self._clock()
+        minute = int(now // 60)
+        with self._lock:
+            rows = list(self._rows.values())
+            timeline = [{"t": m * 60, "requests": self._minutes.get(m, [0, 0])[0],
+                         "errors": self._minutes.get(m, [0, 0])[1]}
+                        for m in range(minute - self.WINDOW + 1, minute + 1)]
+            latency = sorted(self._latency)
+        total = {k: sum(r[k] for r in rows) for k in ("requests", "errors", "prompt_tokens", "completion_tokens")}
+
+        def pct(p: float) -> int | None:
+            return round(latency[min(len(latency) - 1, int(p * len(latency)))]) if latency else None
+
+        requests, errors = total["requests"], total["errors"]
+        return {"uptime_seconds": int(now - self.started), **total,
+                "success_rate": (requests - errors) / requests if requests else None,
+                "latency_ms": {"p50": pct(.5), "p95": pct(.95)}, "timeline": timeline}
 
 
 def _error(status: int, message: str, retry_after: float | None = None) -> JSONResponse:
@@ -136,14 +180,16 @@ def create_app(api: MasterAPI | None = None) -> FastAPI:
         return target
 
     def tracked(record: dict, target: str, op: str, call):
+        # Latency is time to the provider's response (first byte for streams).
         alias = target.partition(":")[0]
+        start = time.perf_counter()
         try:
             result = call()
         except MasterAPIError:
-            usage.record(record["name"], alias, op, ok=False)
+            usage.record(record["name"], alias, op, ok=False, ms=(time.perf_counter() - start) * 1000)
             raise
         tokens = result.get("usage") if isinstance(result, dict) else None
-        usage.record(record["name"], alias, op, ok=True, usage=tokens)
+        usage.record(record["name"], alias, op, ok=True, usage=tokens, ms=(time.perf_counter() - start) * 1000)
         return result
 
     def sse_guard(chunks):
@@ -262,6 +308,10 @@ def create_app(api: MasterAPI | None = None) -> FastAPI:
     @app.get("/admin/usage")
     def admin_usage(_: dict = Depends(admin)):
         return usage.snapshot()
+
+    @app.get("/admin/stats")
+    def admin_stats(_: dict = Depends(admin)):
+        return usage.stats()
 
     @app.get("/admin/tokens")
     def admin_tokens(_: dict = Depends(admin)):

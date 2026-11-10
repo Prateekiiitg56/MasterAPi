@@ -312,7 +312,7 @@ function themeSwitch() {
 function showLogin(message = "") {
   stopLive();
   const input = h("input", { class: "input", type: "password", name: "token", autocomplete: "current-password", spellcheck: "false", required: true, placeholder: "mapi-…" });
-  const tokenField = field({ label: "Admin token", input, hint: "masterapi serve prints one on first start. You can also run masterapi token create admin --admin.", error: message });
+  const tokenField = field({ label: "Admin token", input, hint: "masterapi serve prints it the first time it starts.", error: message });
   if (message) input.setAttribute("aria-invalid", "true");
   const submit = h("button", { type: "submit", class: "btn primary" }, "Sign in");
   const form = h("form", { class: "login-card", novalidate: true },
@@ -335,7 +335,8 @@ function showLogin(message = "") {
       input.focus();
     }
   });
-  $("#root").replaceChildren(h("main", { class: "login" }, form));
+  $("#root").replaceChildren(h("main", { class: "login" }, h("div", {}, form,
+    h("p", { class: "login-foot" }, "Lost the token? Run ", h("code", {}, "masterapi token create admin --admin"), " on the machine running the server."))));
   input.focus();
 }
 
@@ -402,8 +403,7 @@ async function loadCore() {
 
 function skeleton() {
   return [h("div", { class: "page-head" }, h("div", { class: "skeleton sk-line" }, "")),
-    h("div", { class: "page-body" }, h("div", { class: "stats" }, [1, 2, 3, 4].map(() => h("div", { class: "card skeleton sk-block" }))),
-      h("div", { class: "card skeleton sk-block section-gap" }))];
+    h("div", { class: "page-body" }, h("div", { class: "skeleton sk-band" }), h("div", { class: "skeleton sk-block" }))];
 }
 
 async function route({ quiet = false } = {}) {
@@ -420,12 +420,7 @@ async function route({ quiet = false } = {}) {
     if (seq !== state.seq) return;
     updateNav(view);
     target.replaceChildren(...nodes);
-    if (!quiet) {
-      target.classList.remove("view-enter");
-      void target.offsetWidth;
-      target.classList.add("view-enter");
-    }
-    document.title = `${ROUTES.find(([r]) => r === view)[1]} · MasterAPI`;
+    document.title = `${ROUTES.find(([r]) => r === view)[1]} – MasterAPI`;
   } catch (err) {
     if (seq !== state.seq || !state.token) return;
     target.replaceChildren(pageHead("Something went wrong"), h("div", { class: "page-body" },
@@ -480,44 +475,132 @@ function newAliasButton(label = "New alias") {
 
 /* ---------- Overview ---------- */
 
-async function viewOverview() {
-  const usage = await api("GET", "/admin/usage");
-  const keys = state.aliases.reduce((n, a) => n + a.keys.length, 0);
-  const statuses = state.health.map((k) => keyStatus(k).kind);
-  const rejected = statuses.filter((s) => s === "rejected").length;
-  const resting = statuses.filter((s) => s === "resting").length;
-  const requests = usage.reduce((n, r) => n + r.requests, 0);
-  const errors = usage.reduce((n, r) => n + r.errors, 0);
-  const tokens = usage.reduce((n, r) => n + r.prompt_tokens + r.completion_tokens, 0);
+const plural = (n, one, many = `${one}s`) => `${fmt(n)} ${n === 1 ? one : many}`;
+const compact = (n) => (n < 10000 ? fmt(n) : new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(n));
 
-  const stat = (ic, label, value, note, attention = false) =>
-    h("div", { class: `card stat ${attention ? "attention" : ""}` }, h("div", { class: "label" }, icon(ic, "sm"), label), h("div", { class: "value" }, value), h("div", { class: "note" }, note));
+function uptime(seconds) {
+  const d = Math.floor(seconds / 86400), hr = Math.floor((seconds % 86400) / 3600), m = Math.floor((seconds % 3600) / 60);
+  if (d) return `${d}d ${hr}h`;
+  if (hr) return `${hr}h ${m}m`;
+  return m ? `${m}m` : `${seconds}s`;
+}
+
+const ms = (v) => (v == null ? "–" : v >= 1000 ? `${(v / 1000).toFixed(v >= 10000 ? 0 : 1)}` : `${v}`);
+const msUnit = (v) => (v == null ? "" : v >= 1000 ? "s" : "ms");
+
+// One pip per key: brass ring when ready, amber when resting, filled red when rejected.
+function keyring(alias) {
+  return h("span", { class: "keyring", "aria-hidden": "true" }, alias.keys.map((k) => {
+    const s = keyStatus(keyHealth(alias.name, k.fingerprint));
+    return h("span", { class: `k ${s.kind}`, title: `${k.key}: ${s.label}` });
+  }));
+}
+
+// Key health: the left half of the overview band.
+function vaultState() {
+  const keys = state.aliases.flatMap((a) => a.keys.map((k) => ({ alias: a.name, kind: keyStatus(keyHealth(a.name, k.fingerprint)).kind })));
+  const ready = keys.filter((k) => k.kind === "ready").length;
+  const needsKey = state.aliases.filter((a) => a.keys.length).length;
+
+  if (!state.aliases.length) {
+    return h("div", { class: "vault-state" },
+      h("p", { class: "headline" }, "No keys yet"),
+      h("p", { class: "caption" }, "Store a key under a name, then call that name from any project. Your code never sees the key."),
+      h("div", { class: "actions" }, newAliasButton("Add your first key")));
+  }
+
+  const problems = state.aliases.map((a) => {
+    const kinds = a.keys.map((k) => keyStatus(keyHealth(a.name, k.fingerprint)).kind);
+    return { name: a.name, rejected: kinds.filter((k) => k === "rejected").length, resting: kinds.filter((k) => k === "resting").length };
+  }).filter((p) => p.rejected || p.resting);
+
+  const headline = !keys.length ? h("p", { class: "headline" }, "Ready")
+    : ready === keys.length ? h("p", { class: "headline" }, keys.length === 1 ? "Your key is ready" : `All ${fmt(keys.length)} keys ready`)
+      : h("p", { class: "headline" }, fmt(ready), h("span", { class: "of" }, ` of ${fmt(keys.length)}`), " keys ready");
+
+  return h("div", { class: "vault-state" },
+    headline,
+    h("p", { class: "caption" }, h("strong", {}, plural(state.aliases.length, "alias", "aliases")),
+      needsKey < state.aliases.length ? `, ${state.aliases.length - needsKey} that ${state.aliases.length - needsKey === 1 ? "needs" : "need"} no key` : "",
+      problems.length ? "" : ". Calls rotate across every key you store."),
+    problems.length ? h("ul", { class: "issues", "aria-label": "Keys that need attention" }, problems.map((p) => h("li", {},
+      h("a", { href: `#/keys/${enc(p.name)}` },
+        h("span", { class: `pip ${p.rejected ? "bad" : "warn"}`, "aria-hidden": "true" }),
+        `${p.name}: ${[p.rejected && `${p.rejected} rejected`, p.resting && `${p.resting} resting`].filter(Boolean).join(", ")}`)))) : null,
+    keys.length > 1 ? h("div", { class: "actions" }, h("span", { class: "keyring", "aria-hidden": "true" },
+      state.aliases.flatMap((a) => [...keyring(a).childNodes]))) : null);
+}
+
+// Traffic: sixty one-minute bars, errors stacked on top in red.
+function trafficChart(stats, animate) {
+  const lastHour = stats.timeline.reduce((n, b) => n + b.requests, 0);
+  const failed = stats.timeline.reduce((n, b) => n + b.errors, 0);
+  const max = Math.max(1, ...stats.timeline.map((b) => b.requests));
+  const time = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
+  const bars = h("div", { class: `bars ${animate ? "grow" : ""}`, role: "img",
+    "aria-label": `Requests per minute over the last hour: ${fmt(lastHour)} in total, ${fmt(failed)} failed.` },
+  stats.timeline.map((b, i) => {
+    const okH = h("span", {}), errH = h("span", { class: "err" });
+    okH.style.height = `${((b.requests - b.errors) / max) * 100}%`;
+    errH.style.height = `${(b.errors / max) * 100}%`;
+    const col = h("div", { class: `b ${b.requests ? "" : "zero"}`, title: `${time.format(new Date(b.t * 1000))}: ${plural(b.requests, "request")}${b.errors ? `, ${fmt(b.errors)} failed` : ""}` }, errH, okH);
+    col.style.setProperty("--i", i);
+    return col;
+  }), lastHour ? null : h("div", { class: "bars-empty" }, "No requests in the last hour"));
+  return h("div", { class: "traffic" },
+    h("div", { class: "traffic-head" }, h("h2", {}, "Traffic, last hour"),
+      h("span", {}, `${plural(lastHour, "request")}${failed ? `, ${fmt(failed)} failed` : ""}`)),
+    bars,
+    h("div", { class: "axis", "aria-hidden": "true" }, h("span", {}, "60 min ago"), h("span", {}, "30 min"), h("span", {}, "Now")));
+}
+
+function ledger(stats) {
+  const item = (label, value, unit, note, tone = "") => h("div", {}, h("dt", {}, label),
+    h("dd", {}, h("div", { class: `value ${tone}` }, value, unit && h("span", { class: "unit" }, unit)), h("div", { class: "note" }, note)));
+  const rate = stats.success_rate;
+  const tokens = stats.prompt_tokens + stats.completion_tokens;
+  return h("dl", { class: "ledger" },
+    item("Requests", compact(stats.requests), "", stats.requests ? "Since the server started" : "None yet"),
+    item("Success rate", rate == null ? "–" : `${(rate * 100).toFixed(rate === 1 || rate === 0 ? 0 : 1)}`, rate == null ? "" : "%",
+      stats.errors ? `${plural(stats.errors, "failed call")}` : rate == null ? "Shown after the first call" : "No failed calls",
+      rate == null ? "" : rate >= 0.99 ? "good" : rate < 0.9 ? "bad" : ""),
+    item("Response time", ms(stats.latency_ms.p50), msUnit(stats.latency_ms.p50),
+      stats.latency_ms.p95 == null ? "Median, shown after the first call" : `Median. Slowest 5% over ${ms(stats.latency_ms.p95)} ${msUnit(stats.latency_ms.p95)}`),
+    item("Model tokens", compact(tokens), "", tokens ? `${compact(stats.prompt_tokens)} in, ${compact(stats.completion_tokens)} out` : "Prompt and output"),
+    item("Uptime", uptime(stats.uptime_seconds), "", "Counters reset on restart"));
+}
+
+let overviewSeen = false;
+
+async function viewOverview() {
+  const stats = await api("GET", "/admin/stats");
+  const animate = !overviewSeen;
+  overviewSeen = true;
 
   const aliasesCard = state.aliases.length
     ? h("div", { class: "card card-pad" },
       h("div", { class: "section-head" }, h("h2", {}, "Aliases"), h("a", { href: "#/keys", class: "small" }, "Manage keys")),
-      h("div", { class: "alias-mini" }, state.aliases.slice(0, 6).map((a) => {
+      h("div", { class: "alias-mini" }, state.aliases.slice(0, 8).map((a) => {
         const st = aliasStatus(a);
         return h("a", { href: `#/keys/${enc(a.name)}` },
-          h("div", {}, h("div", { class: "name" }, a.name), h("div", { class: "muted small" }, `${a.provider}, ${a.keys.length} ${a.keys.length === 1 ? "key" : "keys"}`)),
-          h("span", { class: `dot ${st}`, title: statusText[st] }, h("span", { class: "sr-only" }, statusText[st])));
-      })))
-    : h("div", { class: "card" }, emptyState("key", "Store your first key", "Give a set of keys one name. Your projects call that name and never see the keys.", newAliasButton("Add a key")));
+          h("span", { class: "name" }, a.name),
+          a.keys.length ? keyring(a) : h("span", { class: "meta" }, "No key needed"),
+          h("span", { class: "meta" }, `${a.provider}, ${plural(a.keys.length, "key")}`),
+          h("span", { class: "sr-only" }, statusText[st]));
+      })),
+      state.aliases.length > 8 ? h("p", { class: "muted small section-gap" }, h("a", { href: "#/keys" }, `See all ${state.aliases.length} aliases`)) : null)
+    : null;
 
   return [
-    pageHead("Overview", "Everything your projects can call, in one place.", newAliasButton()),
+    pageHead("Overview", "Your keys, and how your projects are using them.", state.aliases.length ? newAliasButton() : null),
     h("div", { class: "page-body" },
-      h("div", { class: "stats" },
-        stat("key", "Aliases", fmt(state.aliases.length), `${fmt(keys)} ${keys === 1 ? "key" : "keys"} stored`),
-        stat("health", "Keys ready", `${fmt(keys - rejected - resting)} / ${fmt(keys)}`,
-          rejected || resting ? `${rejected} rejected, ${resting} resting` : "No problems", rejected > 0),
-        stat("usage", "Requests", fmt(requests), errors ? `${fmt(errors)} failed` : "Since the server started"),
-        stat("token", "Model tokens", fmt(tokens), "Prompt and output, since start")),
-      h("div", { class: "overview-grid" },
+      h("section", { class: "vault", "aria-label": "Key health and traffic" }, vaultState(), trafficChart(stats, animate)),
+      ledger(stats),
+      h("div", { class: aliasesCard ? "overview-grid" : "section-gap" },
+        aliasesCard,
         h("div", { class: "card card-pad" },
           h("div", { class: "section-head" }, h("div", {}, h("h2", {}, "Call your keys"), h("p", {}, "Use an alias name wherever a model name goes."))),
-          snippetTabs(state.aliases[0])),
-        aliasesCard)),
+          snippetTabs(state.aliases[0])))),
   ];
 }
 
@@ -837,7 +920,7 @@ async function viewUsage() {
   const total = (k) => rows.reduce((n, r) => n + r[k], 0);
   const body = h("div", {});
   const cols = [["token", "Token"], ["alias", "Alias"], ["op", "Operation"], ["requests", "Requests", true], ["errors", "Errors", true],
-    ["prompt_tokens", "Prompt tokens", true], ["completion_tokens", "Output tokens", true]];
+    ["prompt_tokens", "Prompt tokens", true], ["completion_tokens", "Output tokens", true], ["avg_ms", "Avg time", true]];
 
   const draw = () => {
     const [key, dir] = state.usageSort;
@@ -856,18 +939,19 @@ async function viewUsage() {
           h("td", {}, r.token), h("td", {}, h("a", { href: `#/keys/${enc(r.alias)}` }, r.alias)), h("td", {}, r.op),
           h("td", { class: "num" }, fmt(r.requests)), h("td", { class: "num" }, r.errors ? h("span", { class: "badge bad" }, fmt(r.errors)) : "0"),
           h("td", { class: "num" }, fmt(r.prompt_tokens)), h("td", { class: "num" }, fmt(r.completion_tokens)),
+          h("td", { class: "num" }, `${ms(r.avg_ms)} ${msUnit(r.avg_ms)}`),
           h("td", { class: "hide-sm" }, h("div", { class: "bar", "aria-hidden": "true" }, fill)));
       })))));
   };
   if (rows.length) draw();
 
-  const stat = (label, value) => h("div", { class: "card stat" }, h("div", { class: "label" }, label), h("div", { class: "value" }, value));
+  const item = (label, value, tone = "") => h("div", {}, h("dt", {}, label), h("dd", {}, h("div", { class: `value ${tone}` }, value)));
   return [
     pageHead("Usage", "Requests through this server since it started, per project token."),
     h("div", { class: "page-body" },
-      h("div", { class: "stats" }, stat("Requests", fmt(total("requests"))), stat("Failed", fmt(total("errors"))),
-        stat("Prompt tokens", fmt(total("prompt_tokens"))), stat("Output tokens", fmt(total("completion_tokens")))),
-      h("div", { class: "card" }, rows.length ? body
+      h("dl", { class: "ledger four" }, item("Requests", compact(total("requests"))), item("Failed", compact(total("errors")), total("errors") ? "bad" : ""),
+        item("Prompt tokens", compact(total("prompt_tokens"))), item("Output tokens", compact(total("completion_tokens")))),
+      h("div", { class: "card section-gap" }, rows.length ? body
         : emptyState("usage", "No requests yet", "Point a project at this server with a project token. Its calls show up here."))),
   ];
 }
