@@ -14,8 +14,9 @@
 - `GET /admin/me` returns the signed-in token's name and role.
 - `GET /admin/stats`: uptime, success rate, median and p95 response time, tokens and
   requests per minute for the last hour. `/admin/usage` rows gain `avg_ms`.
-- Dashboard restyle: cabinet green and brass palette, overview band with key health and
-  a traffic chart, KPI ledger, per-alias key pips, favicon.
+- Dashboard restyle: soft cool-gray, dusty blue, sage and blush palette with deep brown
+  and blue-gray for contrast, serif headings, compact buttons; overview band with key
+  health and a traffic chart, KPI ledger, per-alias key pips, favicon.
 
 ## 0.2.0
 
