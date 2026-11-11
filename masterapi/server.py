@@ -6,6 +6,8 @@ and uses an alias name as the model.
 
 import json
 import logging
+import os
+import re
 import secrets
 import threading
 import time
@@ -36,6 +38,69 @@ DASHBOARD_FILES = {"index.html": "text/html", "app.js": "text/javascript", "app.
                    "favicon.svg": "image/svg+xml"}
 DASHBOARD_CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; "
                  "img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
+
+
+REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+SECURITY_HEADERS = {"X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer", "X-Frame-Options": "DENY"}
+
+
+def max_body_bytes() -> int:
+    """Largest request body accepted, from MASTERAPI_MAX_BODY_MB (default 50)."""
+    return int(float(os.environ.get("MASTERAPI_MAX_BODY_MB", 50)) * 1024 * 1024)
+
+
+class BodyLimit:
+    """ASGI middleware: reject request bodies over `limit` bytes with 413.
+
+    A declared Content-Length is checked up front (the server enforces it). A chunked
+    body has no length, so it is read here, counted, and replayed to the app."""
+
+    def __init__(self, app, limit: int):
+        self.app = app
+        self.limit = limit
+
+    async def _reject(self, send) -> None:
+        body = json.dumps({"error": {"message": f"request body is larger than {self.limit // (1024 * 1024)} MB "
+                                                "(set MASTERAPI_MAX_BODY_MB to change)",
+                                     "type": "masterapi_error", "code": 413}}).encode()
+        await send({"type": "http.response.start", "status": 413,
+                    "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())]})
+        await send({"type": "http.response.body", "body": body})
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        headers = dict(scope.get("headers", []))
+        length = headers.get(b"content-length")
+        if length is not None:
+            if not length.isdigit() or int(length) > self.limit:
+                return await self._reject(send)
+            return await self.app(scope, receive, send)
+        if b"chunked" not in headers.get(b"transfer-encoding", b"").lower():
+            return await self.app(scope, receive, send)
+
+        chunks, size = [], 0
+        while True:
+            message = await receive()
+            if message["type"] != "http.request":
+                return  # client went away
+            chunk = message.get("body", b"")
+            size += len(chunk)
+            if size > self.limit:
+                return await self._reject(send)
+            chunks.append(chunk)
+            if not message.get("more_body"):
+                break
+        replayed = False
+
+        async def replay():
+            nonlocal replayed
+            if not replayed:
+                replayed = True
+                return {"type": "http.request", "body": b"".join(chunks), "more_body": False}
+            return await receive()
+
+        await self.app(scope, replay, send)
 
 
 class Usage:
@@ -130,8 +195,12 @@ def create_app(api: MasterAPI | None = None) -> FastAPI:
         async with mcp.session_manager.run():
             yield
 
-    app = FastAPI(title="MasterAPI", version=__version__, lifespan=lifespan)
+    # No /docs, /redoc or /openapi.json: Swagger UI loads scripts from a public CDN,
+    # and the API surface is documented in the README.
+    app = FastAPI(title="MasterAPI", version=__version__, lifespan=lifespan,
+                  docs_url=None, redoc_url=None, openapi_url=None)
     app.router.routes.append(Route("/mcp", endpoint=mcp_app, methods=["GET", "POST", "DELETE"]))
+    app.add_middleware(BodyLimit, limit=max_body_bytes())
 
     @app.exception_handler(MasterAPIError)
     async def _api_error(request, e: MasterAPIError):
@@ -143,10 +212,16 @@ def create_app(api: MasterAPI | None = None) -> FastAPI:
 
     @app.middleware("http")
     async def access_log(request: Request, call_next):
-        rid = request.headers.get("x-request-id") or uuid.uuid4().hex[:12]
+        rid = request.headers.get("x-request-id", "")
+        if not REQUEST_ID_RE.match(rid):  # client-chosen IDs end up in logs: keep them plain
+            rid = uuid.uuid4().hex[:12]
         start = time.perf_counter()
         response = await call_next(request)
         response.headers["X-Request-ID"] = rid
+        for name, value in SECURITY_HEADERS.items():
+            response.headers.setdefault(name, value)
+        if not request.url.path.startswith("/dashboard"):
+            response.headers.setdefault("Cache-Control", "no-store")
         log.info("%s %s %s %s %.0fms token=%s", rid, request.method, request.url.path, response.status_code,
                  (time.perf_counter() - start) * 1000, getattr(request.state, "token", "-"))
         return response

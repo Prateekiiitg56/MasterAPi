@@ -8,6 +8,7 @@ headless machines, in the MASTERAPI_KEY environment variable.
 import copy
 import hashlib
 import hmac
+import ipaddress
 import json
 import os
 import re
@@ -16,6 +17,7 @@ import threading
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -93,6 +95,27 @@ def _migrate(data: dict) -> dict:
     return data
 
 
+def _check_base_url(url: str, sends_key: bool) -> None:
+    """Keys only travel over HTTPS, except to this machine or a private network."""
+    parts = urlsplit(url)
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        raise VaultError(f"base URL must be http(s)://host/...: {url!r}")
+    if parts.username or parts.password:
+        raise VaultError("base URL must not contain credentials; store them as keys")
+    if parts.scheme == "http" and sends_key and not _is_local(parts.hostname):
+        raise VaultError(f"refusing to send API keys over plain HTTP to {parts.hostname}; use https://")
+
+
+def _is_local(host: str) -> bool:
+    if host == "localhost" or host.endswith((".localhost", ".local", ".internal")):
+        return True
+    try:
+        ip = ipaddress.ip_address(host.strip("[]"))
+    except ValueError:
+        return "." not in host  # single-label names (docker service names) stay on the local network
+    return ip.is_loopback or ip.is_private or ip.is_link_local
+
+
 def _validate(name: str, alias: dict) -> None:
     try:
         provider = provider_for(alias)
@@ -100,6 +123,7 @@ def _validate(name: str, alias: dict) -> None:
         raise VaultError(f"alias '{name}': {e}") from None
     if provider.needs_key and not alias["keys"]:
         raise VaultError("at least one API key is required")
+    _check_base_url(provider.base_url, provider.needs_key)
     unknown = set(alias["models"]) - set(OPERATIONS)
     if unknown:
         raise VaultError(f"unknown model operation {sorted(unknown)}")
@@ -133,12 +157,20 @@ class Vault:
         return self._data
 
     def _save(self, data: dict) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".tmp")
-        tmp.write_bytes(self._cipher().encrypt(json.dumps(data).encode()))
-        if os.name == "posix":
-            os.chmod(tmp, 0o600)
-        os.replace(tmp, self.path)
+        """Atomic, owner-only write: a crash leaves the old vault or the new one, never half."""
+        self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        blob = self._cipher().encrypt(json.dumps(data).encode())
+        tmp = self.path.with_name(f"{self.path.name}.{secrets.token_hex(4)}.tmp")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0), 0o600)
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(blob)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, self.path)
+        except BaseException:
+            tmp.unlink(missing_ok=True)
+            raise
         self._data, self._mtime = data, self.path.stat().st_mtime_ns
 
     @contextmanager

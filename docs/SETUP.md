@@ -193,7 +193,9 @@ and the alias as `model`. Examples for Python, Node and curl are in [examples/](
 | `ANY /proxy/{alias}/{path}` | any other endpoint (audio, image edits, other APIs); the key is added |
 | `/mcp` | MCP server for remote coding agents |
 | `/dashboard/` | web dashboard |
-| `/docs` | interactive API docs |
+| `GET /health` | liveness check, no token needed |
+
+Request bodies are limited to 50 MB; raise it with `MASTERAPI_MAX_BODY_MB`.
 
 Errors use OpenAI's format: `{"error": {"message", "type", "code"}}`. When every key
 of an alias is rate limited, the response is `429` with a `Retry-After` header.

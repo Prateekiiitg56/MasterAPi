@@ -244,6 +244,11 @@ is aimed at teams and runs with a database; Cloudflare's runs in their cloud.
 MasterAPI is a small local tool: keys in your OS keychain, rotation across many keys,
 a dashboard, and an MCP server with a local Code Mode sandbox for coding agents.
 
+**Are my keys sent to a cloud?** No. There is no MasterAPI service, account or
+telemetry. Keys stay encrypted on your disk and only go to the provider you stored
+them for, over HTTPS. Prompts and replies are never stored. The full list of what
+lives where is in [SECURITY.md](SECURITY.md#privacy-nothing-goes-to-a-cloud).
+
 **Do my projects or agents ever see the keys?** No. They get an alias name and, over
 HTTP, a project token. The admin API only ever shows the last four characters.
 

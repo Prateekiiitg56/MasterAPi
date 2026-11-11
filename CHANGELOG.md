@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Security hardening: stored keys are masked out of upstream errors, logs and
+  proxied error bodies; raw passthrough paths can't leave the base URL; keys are
+  refused over plain HTTP to non-local hosts; atomic, owner-only vault writes;
+  50 MB request body limit; no-store and other security headers on every API
+  response; `/docs`, `/redoc` and `/openapi.json` removed (Swagger loads CDN
+  scripts); sanitised request IDs. SECURITY.md gains a privacy section.
+
 - One-line install scripts (`install.ps1`, `install.sh`), `masterapi setup` wizard and
   `masterapi connect` to register the MCP server with Claude Code, Cursor, Codex,
   Claude Desktop and Windsurf.

@@ -10,7 +10,7 @@ from dataclasses import dataclass
 import httpx
 
 from .adapters import ADAPTERS
-from .keypool import INVALID, RATE_LIMITED, TRANSIENT, KeyPool, fingerprint
+from .keypool import INVALID, RATE_LIMITED, TRANSIENT, KeyPool, fingerprint, mask
 from .providers import CHAT, EMBEDDINGS, IMAGES, Auth, Provider, provider_for
 from .vault import UnknownAlias, Vault
 
@@ -45,6 +45,42 @@ def _retry_after(r: httpx.Response) -> float | None:
         return float(r.headers["retry-after"])
     except (KeyError, ValueError):
         return None
+
+
+def _redact(text: str, keys: list[str]) -> str:
+    """Remove stored keys from text that leaves the process (errors, logs).
+
+    Some providers echo the key they were sent in error bodies or URLs."""
+    for key in keys:
+        if key and len(key) >= 8:
+            text = text.replace(key, mask(key))
+    return text
+
+
+def _redacted_response(r: httpx.Response, keys: list[str]) -> httpx.Response:
+    """An upstream error response with any stored key masked out of its body."""
+    body = r.read()
+    clean = body
+    for key in keys:
+        if key and len(key) >= 8:
+            clean = clean.replace(key.encode(), mask(key).encode())
+    if clean == body:
+        return r
+    r.close()
+    headers = [(k, v) for k, v in r.headers.multi_items() if k.lower() not in ("content-length", "content-encoding")]
+    return httpx.Response(r.status_code, headers=headers, content=clean, request=r.request)
+
+
+def _safe_path(path: str) -> str:
+    """Raw passthrough path, kept under the provider's base URL.
+
+    Rejects dot segments, backslashes, control characters and an embedded query or
+    fragment, so a caller can't step outside the base path or smuggle parameters."""
+    if any(c in path for c in "\\?#") or any(ord(c) < 0x20 or ord(c) == 0x7f for c in path):
+        raise MasterAPIError("invalid path: use 'params' for query strings; no backslashes or control characters", 400)
+    if any(seg in (".", "..") for seg in path.split("/")):
+        raise MasterAPIError("invalid path: '.' and '..' segments are not allowed", 400)
+    return "/" + path.lstrip("/")
 
 
 def _json(r: httpx.Response) -> dict:
@@ -130,7 +166,8 @@ class MasterAPI:
                 except httpx.HTTPError as e:
                     error = MasterAPIError(f"network error calling '{route.name}': {type(e).__name__}")
                     self.pool.failure(route.name, key, TRANSIENT, str(error))
-                    log.warning("alias=%s key=%s network error: %s", route.name, fingerprint(key), e)
+                    log.warning("alias=%s key=%s network error: %s", route.name, fingerprint(key),
+                                _redact(str(e), route.keys))
                     continue
 
                 if r.status_code < 400:
@@ -139,15 +176,15 @@ class MasterAPI:
                 if stream:
                     r.read()
                 kind = classify(r)
+                detail = _redact(r.text[:1000], route.keys)
                 if kind is None:
                     self.pool.success(route.name, key)  # key was accepted; the request was not
                     if passthrough:
-                        return r
+                        return _redacted_response(r, route.keys)
                     r.close()
-                    raise MasterAPIError(f"'{route.name}' upstream returned {r.status_code}: {r.text[:1000]}",
-                                         r.status_code)
+                    raise MasterAPIError(f"'{route.name}' upstream returned {r.status_code}: {detail}", r.status_code)
                 r.close()
-                error = MasterAPIError(f"'{route.name}' upstream returned {r.status_code}: {r.text[:1000]}",
+                error = MasterAPIError(f"'{route.name}' upstream returned {r.status_code}: {detail}",
                                        r.status_code, _retry_after(r))
                 cooldown = self.pool.failure(route.name, key, kind, f"HTTP {r.status_code}", _retry_after(r))
                 log.warning("alias=%s key=%s status=%s %s cooldown=%.0fs",
@@ -206,7 +243,7 @@ class MasterAPI:
         """Raw call to any API stored under `alias`; the key is injected for you.
         Non-key errors (e.g. 404) come back as the response, not an exception."""
         route = self.route(alias)
-        return self._send(route, method.upper(), "/" + path.lstrip("/"), json=json, content=content,
+        return self._send(route, method.upper(), _safe_path(path), json=json, content=content,
                           headers=headers, params=params, stream=stream, passthrough=True)
 
     # Short helpers
